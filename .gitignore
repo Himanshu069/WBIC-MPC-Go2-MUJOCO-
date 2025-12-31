@@ -1,5 +1,7 @@
 acados/
 mpcq/
 __pycache__/
-vscode/
+.vscode/
+acados_sim.json
+
 
