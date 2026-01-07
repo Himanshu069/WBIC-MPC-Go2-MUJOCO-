@@ -50,10 +50,15 @@ def centroidal_mpc(x0, x_ref_traj, contact_schedule):
     F = ca.SX.sym('F', 3*n_legs, N)
 
     g_constr = []
+    lbg = []
+    ubg = []
+
     cost = 0
 
     # Initial state
     g_constr.append(X[:,0] - x0)
+    lbg += [0]*12
+    ubg += [0]*12
 
     for k in range(N):
         psi_k = x_ref_traj[k,2]
@@ -74,6 +79,8 @@ def centroidal_mpc(x0, x_ref_traj, contact_schedule):
 
         x_next = ca.mtimes(A, X[:,k]) + ca.mtimes(B, F[:,k]) + g_vec
         g_constr.append(X[:,k+1] - x_next)
+        lbg += [0]*12
+        ubg += [0]*12
 
         # Cost
         x_err = X[:,k+1] - x_ref_traj[k,:]
@@ -87,15 +94,34 @@ def centroidal_mpc(x0, x_ref_traj, contact_schedule):
 
             if contact_schedule[k,i] == 1:  # stance
                 # Friction pyramid
+                # |fx| <= mu fz
                 g_constr.append(fx - mu*fz)
+                lbg.append(-ca.inf)
+                ubg.append(0)
+
                 g_constr.append(-fx - mu*fz)
+                lbg.append(-ca.inf)
+                ubg.append(0)
+
+                # |fy| <= mu fz
                 g_constr.append(fy - mu*fz)
+                lbg.append(-ca.inf)
+                ubg.append(0)
+
                 g_constr.append(-fy - mu*fz)
-                g_constr.append(fz)  # fz > 0
-            else:  # swing leg
-                g_constr.append(fx)
-                g_constr.append(fy)
+                lbg.append(-ca.inf)
+                ubg.append(0)
+
+                # fz > 0  (numerically: fz >= 0 or small epsilon)
                 g_constr.append(fz)
+                lbg.append(fz_min)          # or fz_min
+                ubg.append(ca.inf)
+            else:
+                    g_constr.append(fx)
+                    g_constr.append(fy)
+                    g_constr.append(fz)
+                    lbg += [0, 0, 0]
+                    ubg += [0, 0, 0]
 
     g_constr = ca.vertcat(*g_constr)
     vars = ca.vertcat(ca.reshape(X, -1,1), ca.reshape(F,-1,1))
@@ -114,7 +140,13 @@ def centroidal_mpc(x0, x_ref_traj, contact_schedule):
 
     x0_guess = np.vstack([X_guess.reshape(-1,1), F_guess.reshape(-1,1)])
 
-    sol = solver(x0=x0_guess, lbg=0, ubg=0)
+    assert len(lbg) == g_constr.shape[0]
+    assert len(ubg) == g_constr.shape[0]
+    sol = solver(
+        x0=x0_guess,
+        lbg=np.array(lbg),
+        ubg=np.array(ubg)
+    )
     X_opt = np.array(sol['x'][0:12*(N+1)]).reshape(12, N+1)
     F_opt = np.array(sol['x'][12*(N+1):]).reshape(3*n_legs, N)
 

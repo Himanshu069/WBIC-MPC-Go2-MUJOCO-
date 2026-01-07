@@ -38,6 +38,12 @@ def wbic_qp_solver_wbic(A, b, g, Jc, Sf, fr_MPC, q_ddot_cmd, W, n_j, Q1=None, Q2
     # Constraints
     # -----------------------------
     # 1) Floating-base dynamics (equality)
+    Sf = ca.DM(Sf)
+    A  = ca.DM(A)
+    b  = ca.DM(b)
+    g  = ca.DM(g)
+    Jc = ca.DM(Jc)
+    W  = ca.DM(W)
     dyn_eq = Sf @ (A @ q_ddot + b + g) - Sf @ (Jc.T @ fr)
 
     # 2) Contact constraints (inequality)

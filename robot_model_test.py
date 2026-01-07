@@ -90,15 +90,16 @@ print("Desired joint accelerations:", q_ddot_cmd)
 # 5️⃣ WBIC QP (final reaction forces)
 # -----------------------------
 # Build dummy matrices for WBIC QP
-n_q = 12
-n_j = 12
 n_fb = 6
-A_q = np.eye(n_q)
-b_q = np.zeros(n_q)
-g_q = np.zeros(n_q)
-Jc_dummy = np.eye(n_q)  # placeholder contact Jacobian
-Sf_dummy = np.hstack([np.eye(n_fb), np.zeros((n_fb,n_j))])
-W_dummy = np.eye(n_fb)  # simple inequality
+n_j = 12
+n_q = n_fb + n_j  # 18 total
+
+A_q = np.eye(n_q)         # 18x18
+b_q = np.zeros(n_q)       # 18
+g_q = np.zeros(n_q)       # 18
+Jc_dummy = np.zeros((12, n_q))  # 12 contact forces, 18x12 Jacobian transpose
+Sf_dummy = np.hstack([np.eye(n_fb), np.zeros((n_fb, n_j))])  # 6x18
+W_dummy = np.eye(12)  # inequality on 12 contact forces
 
 fr_MPC = F_opt[:, -1]
 fr_opt, delta_fr_opt, delta_f_opt = wbic_qp_solver_wbic(
