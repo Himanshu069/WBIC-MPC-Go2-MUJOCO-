@@ -34,9 +34,7 @@ def wbic_qp_solver_wbic(A, b, g, Jc, Sf, fr_MPC, q_ddot_cmd, W, n_j, Q1=None, Q2
     # Objective: penalize deviations
     obj = ca.mtimes([delta_fr.T, Q1, delta_fr]) + ca.mtimes([delta_f.T, Q2, delta_f])
 
-    # -----------------------------
     # Constraints
-    # -----------------------------
     # 1) Floating-base dynamics (equality)
     Sf = ca.DM(Sf)
     A  = ca.DM(A)

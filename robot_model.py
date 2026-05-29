@@ -192,7 +192,7 @@ class PinModel:
         return getattr(self, name)
     
     def compute_com_x_vec(self):
-        """Compute 12-DOF centroidal state vector"""
+        """12-DOF centroidal state vector"""
         pos_com_world = self.pos_com_world
         rpy_com_world = self.current_config.rpy_world()
         vel_com_world = self.vel_com_world
@@ -209,7 +209,7 @@ class PinModel:
         return x_vec
 
     def update_model(self, q, dq):
-        """Update model with new configuration and velocities"""
+        """model update with new configuration and velocities"""
         self.current_config.update_q(q)
         self.current_config.update_dq(dq)
         pin.forwardKinematics(self.model, self.data, q, dq)
@@ -241,7 +241,7 @@ class PinModel:
         ])
 
     def update_model_simplified(self, q, dq):
-        """Update model with simplified state (roll, pitch, yaw instead of quaternion)"""
+        """model update with simplified state (roll, pitch, yaw instead of quaternion)"""
         roll = q[3]
         pitch = q[4]
         yaw = q[5]

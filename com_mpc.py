@@ -1,14 +1,11 @@
 import casadi as ca
 import numpy as np
 
-# -------------------------------
-# Robot Parameters
-# -------------------------------
 m = 6.921  # base mass [kg]
 g = 9.81
 I_body = np.diag([0.107027, 0.0980771, 0.0244531])
 
-foot_positions = {
+DEFAULT_FOOT_POSITIONS = {
     "FL": np.array([0.1934, 0.0465, -0.213]),
     "FR": np.array([0.1934, -0.0465, -0.213]),
     "RL": np.array([-0.1934, 0.0465, -0.213]),
@@ -25,9 +22,7 @@ R = 0.1*np.eye(3*n_legs)
 mu = 0.6
 fz_min = 1.0  # minimal normal force
 
-# -------------------------------
-# Utility functions
-# -------------------------------
+
 def cross_mat(v):
     return ca.vertcat(
         ca.horzcat(0, -v[2], v[1]),
@@ -42,9 +37,7 @@ def Rz(psi):
         ca.horzcat(0, 0, 1)
     )
 
-# -------------------------------
-# Centroidal MPC
-# -------------------------------
+
 def centroidal_mpc(x0, x_ref_traj, contact_schedule):
     X = ca.SX.sym('X', 12, N+1)
     F = ca.SX.sym('F', 3*n_legs, N)
