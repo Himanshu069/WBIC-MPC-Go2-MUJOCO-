@@ -35,10 +35,10 @@ class ConfigurationState:
         return cls(
             base_pos=np.array([0.0, 0.0, 0.27]),
             base_quat=np.array([0.0, 0.0, 0.0, 1.0]),
-            FL_q=np.array([0.0, 0.9, -1.8]),
-            FR_q=np.array([0.0, 0.9, -1.8]),
-            RL_q=np.array([0.0, 0.9, -1.8]),
-            RR_q=np.array([0.0, 0.9, -1.8]),
+            FL_q=np.array([0.0,  0.9, -1.8]),
+            FR_q=np.array([0.0,  0.9, -1.8]),
+            RL_q=np.array([0.0,  0.9, -1.8]),
+            RR_q=np.array([0.0,  0.9, -1.8]),
             base_v=np.zeros(3),
             base_w=np.zeros(3),
             FL_dq=np.zeros(3),
@@ -136,11 +136,10 @@ class PinModel:
         # Get frame IDs - using calf bodies as foot frames
         self.base_id = self.model.getFrameId("base")
 
-        # Foot frames - using calf bodies (last link in each leg)
-        self.FL_foot_id = self.model.getFrameId("FL_calf")
-        self.FR_foot_id = self.model.getFrameId("FR_calf")
-        self.RL_foot_id = self.model.getFrameId("RL_calf")
-        self.RR_foot_id = self.model.getFrameId("RR_calf")
+        self.FL_foot_id = self.model.getFrameId("FL_foot")
+        self.FR_foot_id = self.model.getFrameId("FR_foot")
+        self.RL_foot_id = self.model.getFrameId("RL_foot")
+        self.RR_foot_id = self.model.getFrameId("RR_foot")
 
         # Hip frames - using thigh bodies
         self.FL_hip_id = self.model.getFrameId("FL_thigh")

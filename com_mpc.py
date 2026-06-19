@@ -38,7 +38,9 @@ def Rz(psi):
     )
 
 
-def centroidal_mpc(x0, x_ref_traj, contact_schedule):
+def centroidal_mpc(x0, x_ref_traj, contact_schedule, foot_positions=None):
+    if foot_positions is None:
+        foot_positions = DEFAULT_FOOT_POSITIONS
     X = ca.SX.sym('X', 12, N+1)
     F = ca.SX.sym('F', 3*n_legs, N)
 
