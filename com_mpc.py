@@ -17,8 +17,8 @@ n_legs = 4
 # MPC parameters
 N = 10      # horizon
 dt = 0.02
-Q = np.diag([50,50,50,100,100,100,1,1,1,10,10,10])
-R = 0.1*np.eye(3*n_legs)
+Q = np.diag([50,50,50,5000,5000,5000,1,1,1,50,50,50])
+R = 0.001*np.eye(3*n_legs)
 mu = 0.6
 fz_min = 1.0  # minimal normal force
 
@@ -122,8 +122,12 @@ def centroidal_mpc(x0, x_ref_traj, contact_schedule, foot_positions=None):
     vars = ca.vertcat(ca.reshape(X, -1,1), ca.reshape(F,-1,1))
 
     # Solver
-    nlp = {'x': vars, 'f': cost, 'g': g_constr}
-    solver = ca.nlpsol('solver', 'ipopt', nlp, {'ipopt.print_level':0, 'print_time':0})
+    qp = {'x': vars, 'f': cost, 'g': g_constr}
+    opts = {
+        "print_iter": False, 
+        "print_header": False
+    }
+    solver = ca.qpsol('solver', 'qrqp', qp, opts)
 
     # Initial guess
     X_guess = np.tile(x0, (N+1,1)).T

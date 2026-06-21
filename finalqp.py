@@ -60,8 +60,12 @@ def wbic_qp_solver_wbic(A, b, g, Jc, Sf, fr_MPC, q_ddot_cmd, W, n_j, Q1=None, Q2
 
     # Solver setup
     vars = ca.vertcat(delta_fr, delta_f)
-    nlp = {'x': vars, 'f': obj, 'g': g}
-    solver = ca.nlpsol('solver', 'ipopt', nlp, {'ipopt.print_level':0, 'print_time':0})
+    qp = {'x': vars, 'f': obj, 'g': g}
+    opts = {
+        "print_iter": False, 
+        "print_header": False
+    }
+    solver = ca.qpsol('solver', 'qrqp', qp, opts)
 
     # Initial guess
     x0 = np.zeros(n_r + n_fb)

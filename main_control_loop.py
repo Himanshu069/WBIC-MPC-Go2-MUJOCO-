@@ -9,14 +9,13 @@ MILESTONE: standing balance only. No swing-leg trajectories, no velocity
 commands yet. x_ref_traj holds the robot at its current pose. Once this is
 stable, swing-foot tasks + a real reference generator get added on top.
 
-Requires the one-line fix to com_mpc.py described in com_mpc_patch_notes.md
-(adds foot_positions=None param, defaults to DEFAULT_FOOT_POSITIONS).
 """
 
 import os
 import numpy as np
 import mujoco as mj
 from mujoco.glfw import glfw
+import time
 
 from robot_model import PinModel
 from gait_scheduler import GaitScheduler, Gaits, LEGS
@@ -26,7 +25,7 @@ from prioritized_task_execution import PrioritizedTaskExecution
 
 XML_PATH = "unitree_go2/scene.xml"
 SIM_DT = 0.001          # MuJoCo physics step
-CTRL_DT = 0.02          # control loop step (50 Hz, matches com_mpc.dt)
+CTRL_DT = 0.03          # control loop step (50 Hz, matches com_mpc.dt)
 SIM_END = 50.0          # seconds
 
 n_fb = 6                # floating base DOFs (3 lin + 3 ang)
@@ -34,9 +33,8 @@ n_j = 12                # joint DOFs
 n_q = n_fb + n_j        # 18 (velocity-space size)
 
 
-# ──────────────────────────────────────────────────────────────────────────
-# 1. STATE BRIDGE: MuJoCo (data.qpos/qvel) -> Pinocchio (q, dq)
-# ──────────────────────────────────────────────────────────────────────────
+#  STATE BRIDGE: MuJoCo (data.qpos/qvel) -> Pinocchio (q, dq)
+
 def mujoco_to_pin_state(data: "mj.MjData") -> tuple[np.ndarray, np.ndarray]:
     """
     Convert live MuJoCo state into the (q, dq) convention used by
@@ -70,9 +68,7 @@ def mujoco_to_pin_state(data: "mj.MjData") -> tuple[np.ndarray, np.ndarray]:
     return q, dq
 
 
-# ──────────────────────────────────────────────────────────────────────────
-# 2. ONE CONTROL STEP: the pipeline from robot_model_test.py, parameterized
-# ──────────────────────────────────────────────────────────────────────────
+# ONE CONTROL STEP
 def compute_torques(robot: PinModel, scheduler: GaitScheduler,
                      q_curr: np.ndarray, dq_curr: np.ndarray) -> np.ndarray:
     """
@@ -92,28 +88,20 @@ def compute_torques(robot: PinModel, scheduler: GaitScheduler,
     # --- live foot lever arms for MPC B matrix ---
     FL_r, FR_r, RL_r, RR_r = robot.get_foot_lever_world()
     live_foot_positions = {"FL": FL_r, "FR": FR_r, "RL": RL_r, "RR": RR_r}
-
+    print(f"live_foot_positions: {live_foot_positions}")
+    t0 = time.time()
     # --- centroidal MPC ---
     X_opt, F_opt = centroidal_mpc(
         x0_vec, x_ref_traj, contact_schedule,
         foot_positions=live_foot_positions,
     )
-
+    print(f"MPC solve took {time.time()-t0:.3f}s")
     # --- prioritized task execution (body orientation + stance feet held) ---
     _, _, M_full = robot.compute_dynamics_terms()
 
     tasks = []
 
-    # Task 1: body orientation (highest priority)
-    J_orient = np.zeros((3, n_q))
-    J_orient[:, 3:6] = np.eye(3)
-    tasks.append({
-        'J': J_orient,
-        'x_des': x0_vec[3:6],   # hold current roll/pitch/yaw
-        'Kp': 50.0, 'Kd': 5.0,
-    })
-
-    # Task 2: stance foot positions held in place
+    # stance foot positions held in place
     J_feet = np.zeros((12, n_q))
     x_des_f = np.zeros(12)
     for i, leg in enumerate(LEGS):
@@ -121,7 +109,8 @@ def compute_torques(robot: PinModel, scheduler: GaitScheduler,
         J_feet[3*i:3*i+3, :] = J_foot_full
         foot_pos, _ = robot.get_single_foot_state_in_world(leg)
         x_des_f[3*i:3*i+3] = foot_pos
-    tasks.append({'J': J_feet, 'x_des': x_des_f, 'Kp': 20.0, 'Kd': 2.0})
+    J_feet_joints = J_feet[:, n_fb:] 
+    tasks.append({'J': J_feet_joints, 'x_des': x_des_f, 'Kp': 20.0, 'Kd': 2.0})
 
     q_joints = q_curr[7:]      # (12,)
     dq_joints = dq_curr[6:]    # (12,)
@@ -150,6 +139,7 @@ def compute_torques(robot: PinModel, scheduler: GaitScheduler,
             fr_MPC_list.append(F_opt[3*i:3*i+3, 0])
     fr_MPC = np.concatenate(fr_MPC_list) if fr_MPC_list else np.zeros(3)
 
+    print(f"fr_MPC={fr_MPC}")
     n_stance = len(Jc_list)
     W = np.eye(3 * n_stance) if n_stance > 0 else np.eye(1)
 
@@ -164,14 +154,21 @@ def compute_torques(robot: PinModel, scheduler: GaitScheduler,
     # --- joint torques: tau = Sa @ (M*q_ddot + C*dq + g - Jc^T * fr) ---
     Sa = np.hstack([np.zeros((n_j, n_fb)), np.eye(n_j)])  # (12, 18)
     q_ddot_wbic = np.concatenate([delta_f, q_ddot_cmd])    # (18,)
-    tau = Sa @ (M_mat @ q_ddot_wbic + b_vec + g_vec - Jc.T @ fr_opt)
 
+    inertial_term = Sa @ (M_mat @ q_ddot_wbic)
+    coriolis_term = Sa @ b_vec
+    gravity_term  = Sa @ g_vec
+    contact_term  = Sa @ (Jc.T @ fr_opt)
+
+    print(f"inertial={inertial_term[:3]} coriolis={coriolis_term[:3]} "
+      f"gravity={gravity_term[:3]} contact={contact_term[:3]}")
+    print(f"fr_opt={fr_opt[:3]}  q_ddot_cmd={q_ddot_cmd[:3]}  delta_f={delta_f}")
+
+    tau = Sa @ (M_mat @ q_ddot_wbic + b_vec + g_vec - Jc.T @ fr_opt)
     return tau
 
 
-# ──────────────────────────────────────────────────────────────────────────
-# 3. MAIN LOOP
-# ──────────────────────────────────────────────────────────────────────────
+#  MAIN LOOP
 def main():
     dirname = os.path.dirname(__file__)
     xml_path = os.path.join(dirname, XML_PATH)
@@ -218,7 +215,7 @@ def main():
 
             q, dq = mujoco_to_pin_state(data)
             robot.update_model(q, dq)
-
+            print(f"rpy_world: {robot.current_config.rpy_world()}")
             try:
                 tau = compute_torques(robot, scheduler, q, dq)
             except Exception as e:
