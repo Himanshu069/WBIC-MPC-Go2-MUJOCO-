@@ -1,11 +1,11 @@
 import numpy as np
 
 class PrioritizedTaskExecution:
-    def __init__(self, n_joints):
+    def __init__(self, n_dof):
         """
         n_joints: number of joints in the robot
         """
-        self.n_joints = n_joints
+        self.n_dof = n_dof
 
     @staticmethod
     def pseudo_inverse(J, method='svd', A=None):
@@ -44,7 +44,7 @@ class PrioritizedTaskExecution:
             q_dot_cmd: desired joint velocities
             q_ddot_cmd: desired joint accelerations
         """
-        n = self.n_joints
+        n = self.n_dof
         delta_q_prev = np.zeros(n)
         q_dot_prev = np.zeros(n)
         q_ddot_prev = np.zeros(n)
@@ -67,7 +67,9 @@ class PrioritizedTaskExecution:
             # Task error in position and velocity
             # print("J_size", J)
             # print("q_curr",q_curr)
-            x_curr = J @ q_curr
+            x_curr = task.get('x_curr')
+            if x_curr is None:
+                raise ValueError("Task dictionary must contain 'x_curr' for position control.")           
             x_dot_curr = J @ q_dot_curr
             e = x_des - x_curr
             e_dot = x_dot_des - x_dot_curr

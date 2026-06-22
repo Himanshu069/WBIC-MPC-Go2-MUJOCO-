@@ -76,51 +76,43 @@ def compute_torques(robot: PinModel, scheduler: GaitScheduler,
     (12,) in actuator order: FL_hip, FL_thigh, FL_calf, FR_hip, FR_thigh,
     FR_calf, RL_..., RR_... matching the MJCF <actuator> block exactly.
     """
-    # --- gait scheduling ---
     scheduler.step()
     contact_now = scheduler.contact_state()            # (4,)
     contact_schedule = scheduler.contact_schedule(N)    # (N, 4)
 
-    # --- reference trajectory: hold current pose (standing milestone) ---
     x0_vec = robot.compute_com_x_vec().flatten()        # (12,)
     x_ref_traj = np.tile(x0_vec, (N, 1))                # (N, 12)
 
-    # --- live foot lever arms for MPC B matrix ---
     FL_r, FR_r, RL_r, RR_r = robot.get_foot_lever_world()
     live_foot_positions = {"FL": FL_r, "FR": FR_r, "RL": RL_r, "RR": RR_r}
-    print(f"live_foot_positions: {live_foot_positions}")
-    t0 = time.time()
-    # --- centroidal MPC ---
     X_opt, F_opt = centroidal_mpc(
         x0_vec, x_ref_traj, contact_schedule,
         foot_positions=live_foot_positions,
     )
-    print(f"MPC solve took {time.time()-t0:.3f}s")
-    # --- prioritized task execution (body orientation + stance feet held) ---
-    _, _, M_full = robot.compute_dynamics_terms()
+
+    g_vec, C_mat, M_full = robot.compute_dynamics_terms()
 
     tasks = []
+    J_pos = np.hstack([np.eye(3), np.zeros((3, 15))])   # (3,18)
+    x_des_pos = q_curr[0:3]   # current position
+    tasks.append({'J': J_pos,  'x_curr': q_curr[0:3], 'x_des': x_des_pos, 'Kp': 50.0, 'Kd': 10.0})
+    
 
-    # stance foot positions held in place
-    J_feet = np.zeros((12, n_q))
     x_des_f = np.zeros(12)
+    x_curr_f = np.zeros(12)
+    J_feet_full = np.zeros((12, 18))
     for i, leg in enumerate(LEGS):
-        J_foot_full = robot.compute_full_foot_Jacobian_world(leg)
-        J_feet[3*i:3*i+3, :] = J_foot_full
         foot_pos, _ = robot.get_single_foot_state_in_world(leg)
+        x_curr_f[3*i:3*i+3] = foot_pos
         x_des_f[3*i:3*i+3] = foot_pos
-    J_feet_joints = J_feet[:, n_fb:] 
-    tasks.append({'J': J_feet_joints, 'x_des': x_des_f, 'Kp': 20.0, 'Kd': 2.0})
+        J_full = robot.compute_full_foot_Jacobian_world(leg)   # (3,18)
+        J_feet_full[3*i:3*i+3, :] = J_full
 
-    q_joints = q_curr[7:]      # (12,)
-    dq_joints = dq_curr[6:]    # (12,)
-    A_joints = M_full[6:, 6:]  # (12, 12)
+    tasks.append({'J': J_feet_full,'x_curr': x_curr_f, 'x_des': x_des_f, 'Kp': 20.0, 'Kd': 2.0})
 
-    pte = PrioritizedTaskExecution(n_joints=n_j)
-    q_cmd, q_dot_cmd, q_ddot_cmd = pte.execute(tasks, q_joints, dq_joints, A=A_joints)
+    pte = PrioritizedTaskExecution(n_dof=18)
+    q_cmd, q_dot_cmd, q_ddot_cmd = pte.execute(tasks, q_curr, dq_curr, A=M_full)
 
-    # --- build WBIC matrices ---
-    g_vec, C_mat, M_mat = robot.compute_dynamics_terms()
     b_vec = C_mat @ dq_curr
 
     Sf = np.hstack([np.eye(n_fb), np.zeros((n_fb, n_j))])  # (6, 18)
@@ -131,7 +123,6 @@ def compute_torques(robot: PinModel, scheduler: GaitScheduler,
             Jc_list.append(robot.compute_full_foot_Jacobian_world(leg))
     Jc = np.vstack(Jc_list) if Jc_list else np.zeros((1, n_q))
 
-    q_ddot_full = np.concatenate([np.zeros(n_fb), q_ddot_cmd])
 
     fr_MPC_list = []
     for i in range(4):
@@ -139,10 +130,22 @@ def compute_torques(robot: PinModel, scheduler: GaitScheduler,
             fr_MPC_list.append(F_opt[3*i:3*i+3, 0])
     fr_MPC = np.concatenate(fr_MPC_list) if fr_MPC_list else np.zeros(3)
 
-    print(f"fr_MPC={fr_MPC}")
-    n_stance = len(Jc_list)
-    W = np.eye(3 * n_stance) if n_stance > 0 else np.eye(1)
 
+    mu = 0.6
+    nc = len(Jc_list)  
+    if nc > 0:
+        W = np.zeros((5 * nc, 3 * nc))
+        for i in range(nc):
+            W[5*i:5*i+5, 3*i:3*i+3] = np.array([
+                [1.0, 0.0,  mu],
+                [-1.0, 0.0, mu],
+                [0.0, 1.0,  mu],
+                [0.0, -1.0, mu],
+                [0.0, 0.0,  1.0]
+            ])
+    else:
+        W = np.eye(1) 
+    
     fr_opt, delta_fr, delta_f = wbic_qp_solver_wbic(
         A=M_mat, b=b_vec, g=g_vec,
         Jc=Jc, Sf=Sf,
@@ -151,20 +154,11 @@ def compute_torques(robot: PinModel, scheduler: GaitScheduler,
         W=W, n_j=n_j,
     )
 
-    # --- joint torques: tau = Sa @ (M*q_ddot + C*dq + g - Jc^T * fr) ---
     Sa = np.hstack([np.zeros((n_j, n_fb)), np.eye(n_j)])  # (12, 18)
-    q_ddot_wbic = np.concatenate([delta_f, q_ddot_cmd])    # (18,)
-
-    inertial_term = Sa @ (M_mat @ q_ddot_wbic)
-    coriolis_term = Sa @ b_vec
-    gravity_term  = Sa @ g_vec
-    contact_term  = Sa @ (Jc.T @ fr_opt)
-
-    print(f"inertial={inertial_term[:3]} coriolis={coriolis_term[:3]} "
-      f"gravity={gravity_term[:3]} contact={contact_term[:3]}")
-    print(f"fr_opt={fr_opt[:3]}  q_ddot_cmd={q_ddot_cmd[:3]}  delta_f={delta_f}")
-
-    tau = Sa @ (M_mat @ q_ddot_wbic + b_vec + g_vec - Jc.T @ fr_opt)
+    q_ddot_wbic = q_ddot_cmd + np.concatenate([delta_f, np.zeros(12)])    # (18,)
+    print("q_ddot_wbic",q_ddot_wbic)
+    full_tau = (M_mat @ q_ddot_wbic + b_vec + g_vec - Jc.T @ fr_opt)
+    tau = Sa @ full_tau
     return tau
 
 
@@ -215,13 +209,13 @@ def main():
 
             q, dq = mujoco_to_pin_state(data)
             robot.update_model(q, dq)
-            print(f"rpy_world: {robot.current_config.rpy_world()}")
+            # print(f"rpy_world: {robot.current_config.rpy_world()}")
             try:
                 tau = compute_torques(robot, scheduler, q, dq)
             except Exception as e:
                 print(f"[control] solver failed at t={data.time:.3f}: {e}")
                 # Fail-safe: hold last known good torque rather than crash sim.
-
+        # print("tau", tau)
         data.ctrl[:] = tau
         mj.mj_step(model, data)
 
