@@ -97,8 +97,8 @@ class PrioritizedTaskExecution:
             delta_q_prev = delta_q
             q_dot_prev = q_dot_cmd
             q_ddot_prev = q_ddot_cmd
-
+        n_j = 12
         # Compute final desired joint positions
-        q_cmd = q_curr + delta_q
-
+        q_cmd = q_curr[-n_j:] + delta_q[-n_j:] 
+        
         return q_cmd, q_dot_cmd, q_ddot_cmd

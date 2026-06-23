@@ -186,6 +186,9 @@ class PinModel:
         # Initialize model state
         self.update_model(self.q_init, self.dq_init)
 
+        self.total_mass = pin.computeTotalMass(self.model) 
+        print(f"--> PinModel initialized. True Total Robot Mass: {self.total_mass:.3f} kg")
+
     def get_hip_offset(self, leg: str):
         name = f"{leg.upper()}_hip_offset"
         return getattr(self, name)

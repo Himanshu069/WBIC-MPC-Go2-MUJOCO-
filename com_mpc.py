@@ -1,7 +1,7 @@
 import casadi as ca
 import numpy as np
 
-m = 6.921  # base mass [kg]
+m = 15.206 # base mass [kg]
 g = 9.81
 I_body = np.diag([0.107027, 0.0980771, 0.0244531])
 
@@ -66,8 +66,12 @@ def centroidal_mpc(x0, x_ref_traj, contact_schedule, foot_positions=None):
 
         B = ca.SX.zeros(12, 3*n_legs)
         for i, foot in enumerate(foot_names):
-            r = foot_positions[foot]
-            B[6:9, 3*i:3*i+3] = ca.mtimes(ca.inv(I_body), cross_mat(r)) * dt
+            r_body = foot_positions[foot]
+            r_world = ca.mtimes(Rz_k, r_body)
+
+            I_world_inv = ca.mtimes([Rz_k, ca.inv(I_body), Rz_k.T])
+
+            B[6:9, 3*i:3*i+3] = ca.mtimes(ca.inv(I_world_inv), cross_mat(r_world)) * dt   
             B[9:12, 3*i:3*i+3] = dt/m * ca.SX.eye(3)
 
         g_vec = ca.vertcat(ca.SX.zeros(9), ca.SX([0,0,-g]))*dt
@@ -146,7 +150,7 @@ def centroidal_mpc(x0, x_ref_traj, contact_schedule, foot_positions=None):
         lbg=np.array(lbg),
         ubg=np.array(ubg)
     )
-    X_opt = np.array(sol['x'][0:12*(N+1)]).reshape(12, N+1)
-    F_opt = np.array(sol['x'][12*(N+1):]).reshape(3*n_legs, N)
+    X_opt = np.array(sol['x'][0:12*(N+1)]).reshape(12, N+1, order='F')
+    F_opt = np.array(sol['x'][12*(N+1):]).reshape(3*n_legs, N, order='F')
 
     return X_opt, F_opt

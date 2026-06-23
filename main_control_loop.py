@@ -147,17 +147,17 @@ def compute_torques(robot: PinModel, scheduler: GaitScheduler,
         W = np.eye(1) 
     
     fr_opt, delta_fr, delta_f = wbic_qp_solver_wbic(
-        A=M_mat, b=b_vec, g=g_vec,
+        A=M_full, b=b_vec, g=g_vec,
         Jc=Jc, Sf=Sf,
         fr_MPC=fr_MPC,
-        q_ddot_cmd=q_ddot_full,
+        q_ddot_cmd=q_ddot_cmd,
         W=W, n_j=n_j,
     )
 
     Sa = np.hstack([np.zeros((n_j, n_fb)), np.eye(n_j)])  # (12, 18)
     q_ddot_wbic = q_ddot_cmd + np.concatenate([delta_f, np.zeros(12)])    # (18,)
-    print("q_ddot_wbic",q_ddot_wbic)
-    full_tau = (M_mat @ q_ddot_wbic + b_vec + g_vec - Jc.T @ fr_opt)
+    # print("q_ddot_wbic",q_ddot_wbic)
+    full_tau = (M_full @ q_ddot_wbic + b_vec + g_vec - Jc.T @ fr_opt)
     tau = Sa @ full_tau
     return tau
 
