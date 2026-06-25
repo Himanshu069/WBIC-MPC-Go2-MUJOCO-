@@ -3,3 +3,4 @@ mpcq/
 __pycache__/
 .vscode/
 acados_sim.json
+simulation_plots/

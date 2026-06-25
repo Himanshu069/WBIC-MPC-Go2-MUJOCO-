@@ -203,8 +203,8 @@ class PinModel:
         R = self.R_body_to_world
         omega_world = R @ rpy_rate_body
 
-        x_vec = np.concatenate([pos_com_world, rpy_com_world, 
-                                vel_com_world, omega_world])
+        x_vec = np.concatenate([rpy_com_world, pos_com_world,
+                                 omega_world, vel_com_world])
         
         x_vec = x_vec.reshape(-1, 1)
 

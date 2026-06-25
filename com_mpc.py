@@ -1,7 +1,7 @@
 import casadi as ca
 import numpy as np
 
-m = 15.206 # base mass [kg]
+m = 15.206408000000003  # base mass [kg]
 g = 9.81
 I_body = np.diag([0.107027, 0.0980771, 0.0244531])
 
