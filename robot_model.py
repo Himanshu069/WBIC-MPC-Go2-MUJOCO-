@@ -205,7 +205,7 @@ class PinModel:
 
         x_vec = np.concatenate([rpy_com_world, pos_com_world,
                                  omega_world, vel_com_world])
-        
+        x_vec[5] = pos_com_world[2] 
         x_vec = x_vec.reshape(-1, 1)
 
         return x_vec

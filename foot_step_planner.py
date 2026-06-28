@@ -1,7 +1,7 @@
 import numpy as np
 from numpy import cos, sin
 
-STEP_HEIGHT = 0.12
+STEP_HEIGHT = 0.08
 
 class FootStepPlanner:
     def __init__(self, pin_model, stance_time=0.25, k_symmetry=0.03, v_cmd=None, omega_cmd=None):
@@ -46,30 +46,47 @@ class FootStepPlanner:
         foot_positions = {}
         for leg, hip_offset in hips.items():
             p_shoulder = base_pos + Rz @ hip_offset
-            foot_positions[leg] = p_shoulder + psym + pcentrifugal
-
+            target_pos = p_shoulder + psym + pcentrifugal
+            foot_positions[leg] = target_pos
+            foot_positions[leg][2] = 0.0 
         return foot_positions
     
     def swing_foot_target(self, p_lift: np.ndarray, p_land: np.ndarray,
                           phase: float) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
         phase in [0, 1]: 0 = lift-off, 1 = touch-down.
-        XY: linear interp between lift and land.
-        Z:  raised-cosine arc peaking at STEP_HEIGHT above lift-off Z.
         """
+        s = np.clip(phase, 0.0, 1.0)
+
         t_swing = self.stance_time
         dphase = 1.0 / t_swing
+        dphase2 = dphase ** 2
 
-        xy = (1 - phase) * p_lift[:2] + phase * p_land[:2]
-        z  = p_lift[2] + STEP_HEIGHT * (np.sin(np.pi * phase) ** 2)
-        x_des = np.array([xy[0], xy[1], z])
+        c       = 10 * (s**3) - 15 * (s**4) + 6 * (s**5)
+        dc_ds   = 30 * (s**2) - 60 * (s**3) + 30 * (s**4)
+        d2c_ds2 = 60 * s      - 180 * (s**2) + 120 * (s**3)
+        
+        xy_diff = p_land[:2] - p_lift[:2]
+        
+        xy = p_lift[:2] + xy_diff * c
+        xy_dot = xy_diff * dc_ds * dphase
+        xy_ddot = xy_diff * d2c_ds2 * dphase2
 
-        xy_dot = (p_land[:2] - p_lift[:2]) * dphase
-        z_dot = STEP_HEIGHT * np.pi * np.sin(2.0 * np.pi * phase) * dphase
-        x_dot_des = np.array([xy_dot[0], xy_dot[1], z_dot])
+        z_base      =  p_lift[2] + (p_land[2] - p_lift[2]) * c   # uses same quintic c
+        z_base_dot  = (p_land[2] - p_lift[2]) * dc_ds  * dphase
+        z_base_ddot = (p_land[2] - p_lift[2]) * d2c_ds2 * dphase2
 
-        xy_ddot = np.zeros(2)
-        z_ddot = -STEP_HEIGHT * (np.pi ** 2) * np.cos(2.0 * np.pi * phase) * (dphase ** 2)
+        arc        =  4.0 * STEP_HEIGHT * s * (1.0 - s)
+        darc_ds    =  4.0 * STEP_HEIGHT * (1.0 - 2.0 * s)
+        d2arc_ds2  = -8.0 * STEP_HEIGHT
+
+        z      = z_base      + arc
+        z_dot  = z_base_dot  + darc_ds   * dphase
+        z_ddot = z_base_ddot + d2arc_ds2 * dphase2
+
+        x_des      = np.array([xy[0],      xy[1],      z     ])
+        x_dot_des  = np.array([xy_dot[0],  xy_dot[1],  z_dot ])
         x_ddot_des = np.array([xy_ddot[0], xy_ddot[1], z_ddot])
+
         
         return x_des, x_dot_des, x_ddot_des

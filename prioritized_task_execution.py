@@ -50,10 +50,13 @@ class PrioritizedTaskExecution:
         q_ddot_prev = np.zeros(n)
 
         if Jc is not None:
+            Jc_pinv_dc = self.pseudo_inverse(Jc, method='dynamically_consistent', A=A)
             Jc_pinv = self.pseudo_inverse(Jc, method='svd',)
             N_prev = np.eye(n) - Jc_pinv @ Jc
+            q_ddot_prev = Jc_pinv_dc @ (-Jc @ q_dot_curr)
         else:
             N_prev = np.eye(n)
+            q_ddot_prev = np.zeros(n)
 
         for task in tasks:
             J = task['J']
@@ -93,12 +96,12 @@ class PrioritizedTaskExecution:
             q_dot_cmd = q_dot_prev + J_pre_pinv @ (x_dot_des - J @ q_dot_prev)
             q_ddot_cmd = q_ddot_prev + J_pre_pinv_dc @ (x_ddot_cmd - J @ q_ddot_prev - J_dot @ q_dot_curr)
             # Update null-space projector for next task
-            N_prev = N_prev @ (np.eye(n) - J_pre_pinv @ J_pre)
+            N_prev = N_prev @ (np.eye(n) - J_pre_pinv_dc @ J_pre)
             delta_q_prev = delta_q
             q_dot_prev = q_dot_cmd
             q_ddot_prev = q_ddot_cmd
         n_j = 12
         # Compute final desired joint positions
-        q_cmd = q_curr[-n_j:] + delta_q[-n_j:] 
+        q_cmd = q_curr[7:19] + delta_q[6:18]
         
         return q_cmd, q_dot_cmd, q_ddot_cmd

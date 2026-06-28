@@ -16,7 +16,7 @@ n_legs = 4
 
 # MPC parameters
 N = 10      # horizon
-dt = 0.02
+dt = 0.04
 Q = np.diag([50,50,50,5000,5000,5000,1,1,1,50,50,50])
 R = 0.001*np.eye(3*n_legs)
 mu = 0.6

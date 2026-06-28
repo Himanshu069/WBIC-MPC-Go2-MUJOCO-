@@ -48,7 +48,7 @@ def wbic_qp_solver_wbic(A, b, g, Jc, Sf, fr_MPC, q_ddot_cmd, W, n_j, Q1=None, Q2
     contact_ineq = W @ fr
 
     # Concatenate constraints for IPOPT
-    g = ca.vertcat(dyn_eq, contact_ineq)
+    g_constr = ca.vertcat(dyn_eq, contact_ineq)
 
     # Bounds: equality constraints
     lbg = np.zeros(dyn_eq.shape[0])
@@ -60,7 +60,7 @@ def wbic_qp_solver_wbic(A, b, g, Jc, Sf, fr_MPC, q_ddot_cmd, W, n_j, Q1=None, Q2
 
     # Solver setup
     vars = ca.vertcat(delta_fr, delta_f)
-    qp = {'x': vars, 'f': obj, 'g': g}
+    qp = {'x': vars, 'f': obj, 'g': g_constr}
     opts = {
         "print_iter": False, 
         "print_header": False
