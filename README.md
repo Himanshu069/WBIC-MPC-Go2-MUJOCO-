@@ -94,6 +94,8 @@ The `PrioritizedTaskExecution` class solves a hierarchy of Cartesian tasks using
 
 
 ---
+###  Final QP Optimization (WBIC)
+After the Prioritized Task Execution layer computes the kinematically desired joint accelerations $\ddot{q}_{cmd}$, the `finalqp.py` layer formulates a Quadratic Program to find the optimal ground reaction forces $f_r$. 
 
-
+This step acts as a bridge between the high-level MPC force commands ($f_{MPC}$) and the low-level task accelerations, ensuring that the physical torques respect the floating-base dynamics and contact constraints. The QP minimizes the deviation from the MPC-planned reaction forces.
 
